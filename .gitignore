@@ -1,0 +1,9 @@
+
+# Database
+data/
+
+# Environment variables
+.env
+
+# Node modules
+node_modules/
