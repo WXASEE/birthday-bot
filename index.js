@@ -19,6 +19,10 @@ setupCronJobs(app);
 
 // Start the app
 (async () => {
-  await app.start(process.env.PORT || 3000);
-  console.log('⚡️ Birthday Bot is running!');
+  const port = process.env.PORT || 10000; // Default Render port is 10000
+  await app.start({
+    port: port,
+    host: '0.0.0.0' // Required for Render deployment
+  });
+  console.log(`⚡️ Birthday Bot is running on port ${port}!`);
 })();
