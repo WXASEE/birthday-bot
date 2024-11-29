@@ -11,18 +11,17 @@ const app = new App({
   appToken: process.env.SLACK_APP_TOKEN
 });
 
-// Register commands
+// Register commands and setup cron jobs before starting
 registerCommands(app);
-
-// Set up cron jobs
 setupCronJobs(app);
 
-// Start the app
-(async () => {
-  const port = process.env.PORT || 10000; // Default Render port is 10000
-  await app.start({
-    port: port,
-    host: '0.0.0.0' // Required for Render deployment
+// Start the app and listen for connections immediately
+const port = process.env.PORT || 10000;
+app.start(port)
+  .then(() => {
+    console.log(`⚡️ Birthday Bot is running on port ${port}!`);
+  })
+  .catch(error => {
+    console.error('Error starting the app:', error);
+    process.exit(1);
   });
-  console.log(`⚡️ Birthday Bot is running on port ${port}!`);
-})();
