@@ -15,7 +15,7 @@ node index.js
 ## Commands
 
 - `/set-birthday @user DD-MM`: Set someone's birthday.
-- `/show-birthday`: Show all birthdays.
+- `/see-birthdays`: Show all birthdays.
 - `/post-birthday-thread @user`: Manually post a thread to the birthday channel for someone.
 - `/collect-birthdays @user`: Manually collect birthday messages for someone.
 
