@@ -2,13 +2,15 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-// Create a data directory if it doesn't exist
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
+// Use different data directories for production and development
+const dataDir = process.env.NODE_ENV === 'production' ? '/data' : path.join(__dirname, 'data');
+
+// Create directory if it doesn't exist (and we're not in production)
+if (process.env.NODE_ENV !== 'production' && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir);
 }
 
-// Use a specific path for the database file in the data directory
+// Use a specific path for the database file
 const dbPath = path.join(dataDir, 'birthdays.db');
 
 // Initialize database with options for better error handling
