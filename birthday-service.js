@@ -165,7 +165,8 @@ async function triggerBirthdayCollection(client, celebrantId) {
               label: {
                 type: "plain_text",
                 text: "Describe Them"
-              }
+              },
+              optional: true
             },
             {
               type: "actions",
