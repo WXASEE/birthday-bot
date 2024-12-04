@@ -69,100 +69,128 @@ async function triggerBirthdayCollection(client, celebrantId) {
     const result = await client.users.list();
     const users = result.members.filter(user => 
       !user.is_bot && 
+      !user.deleted &&
       !user.is_restricted && 
       !user.is_ultra_restricted &&
       user.id !== celebrantId && 
+      user.id !== 'USLACKBOT' &&
       user.name !== celebrantId
     );
 
+    console.log(`Attempting to send messages to ${users.length} users`);
+
     for (const user of users) {
-      const descriptionPrompt = getRandomPrompt();
-      await client.chat.postMessage({
-        channel: user.id,
-        text: `Birthday message collection for <@${celebrantId}>`,
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `Hey! :birthday: *<@${celebrantId}>* has a birthday coming up in 7 days!`
-            }
-          },
-          {
-            type: "input",
-            block_id: "message_input_block",
-            element: {
-              type: "plain_text_input",
-              action_id: "message_input",
-              multiline: true,
-              placeholder: {
-                type: "plain_text",
-                text: "Type your birthday message here..."
-              }
-            },
-            label: {
-              type: "plain_text",
-              text: "Your Birthday Message"
-            }
-          },
-          {
-            type: "input",
-            block_id: "media_input_block",
-            element: {
-              type: "plain_text_input",
-              action_id: "media_input",
-              placeholder: {
-                type: "plain_text",
-                text: "Paste a URL to a GIF or image..."
-              }
-            },
-            label: {
-              type: "plain_text", 
-              text: "Optional: Add Media (Hint: Use /giphy to search for a GIF and copy the URL)"
-            },
-            optional: true
-          },
-          {
-            type: "divider"
-          },
-          {
-            type: "input",
-            block_id: "description_input_block",
-            element: {
-              type: "plain_text_input",
-              action_id: "description_input",
-              multiline: true,
-              placeholder: {
-                type: "plain_text",
-                text: `${descriptionPrompt}`
-              }
-            },
-            label: {
-              type: "plain_text",
-              text: "Describe Them"
-            }
-          },
-          {
-            type: "actions",
-            block_id: "submit_block",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Submit",
-                  emoji: true
-                },
-                action_id: "submit_birthday_content",
-                value: `${celebrantId}`
-              }
-            ]
+      try {
+
+        // Check if we can message this user
+        try {
+          // Try to open a DM channel first
+          const conversationResponse = await client.conversations.open({
+            users: user.id
+          });
+          
+          if (!conversationResponse.ok) {
+            console.log(`Cannot open DM with user ${user.id}`);
+            continue;
           }
-        ]
-      });
+        } catch (dmError) {
+          console.log(`Error opening DM with user ${user.id}:`, dmError);
+          continue;
+        }
+
+        const descriptionPrompt = getRandomPrompt();
+
+        console.log(`Sending birthday message collection to ${user.id}`)
+
+        await client.chat.postMessage({
+          channel: user.id,
+          text: `Birthday message collection for <@${celebrantId}>`,
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `Hey! :birthday: *<@${celebrantId}>* has a birthday coming up in 7 days!`
+              }
+            },
+            {
+              type: "input",
+              block_id: "message_input_block",
+              element: {
+                type: "plain_text_input",
+                action_id: "message_input",
+                multiline: true,
+                placeholder: {
+                  type: "plain_text",
+                  text: "Type your birthday message here..."
+                }
+              },
+              label: {
+                type: "plain_text",
+                text: "Your Birthday Message"
+              }
+            },
+            {
+              type: "input",
+              block_id: "media_input_block",
+              element: {
+                type: "plain_text_input",
+                action_id: "media_input",
+                placeholder: {
+                  type: "plain_text",
+                  text: "Paste a URL to a GIF or image..."
+                }
+              },
+              label: {
+                type: "plain_text", 
+                text: "Optional: Add Media (Hint: Use /giphy to search for a GIF and copy the URL)"
+              },
+              optional: true
+            },
+            {
+              type: "divider"
+            },
+            {
+              type: "input",
+              block_id: "description_input_block",
+              element: {
+                type: "plain_text_input",
+                action_id: "description_input",
+                multiline: true,
+                placeholder: {
+                  type: "plain_text",
+                  text: `${descriptionPrompt}`
+                }
+              },
+              label: {
+                type: "plain_text",
+                text: "Describe Them"
+              }
+            },
+            {
+              type: "actions",
+              block_id: "submit_block",
+              elements: [
+                {
+                  type: "button",
+                  text: {
+                    type: "plain_text",
+                    text: "Submit",
+                    emoji: true
+                  },
+                  action_id: "submit_birthday_content",
+                  value: `${celebrantId}`
+                }
+              ]
+            }
+          ]
+        });
+      } catch (error) {
+        console.error(`Error sending birthday collection message to ${user.id}:`, error);
+      }
     }
   } catch (error) {
-    console.error('Error sending birthday collection messages:', error);
+    console.error('Error triggering birthday collection:', error);
   }
 }
 
