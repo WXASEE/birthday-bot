@@ -182,12 +182,19 @@ function registerCommands(app) {
         return;
       }
 
-      // Clean up the user ID (remove <@ and >)
-      const cleanCelebrantId = celebrantId.replace(/[<@>]/g, '');
+      // Look up user info from Slack API
+      const result = await client.users.list();
+      const users = result.members;
 
-      console.log(cleanCelebrantId);
+      // Extract user ID from mention format <@U1234>
+      const userName = celebrantId.replace(/[<@>]/g, '');
+      const user = users.find(user => user.name === userName);
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
 
-      await triggerBirthdayCollection(client, cleanCelebrantId);
+      await triggerBirthdayCollection(client, user.id);
       await say({
         text: "Birthday message collection started",
         blocks: [
@@ -210,8 +217,14 @@ function registerCommands(app) {
     try {
       await ack();
       
-      // Extract celebrant info from button value
-      const celebrantId = action.value;
+      // Extract celebrant ID from message text
+      const match = body.message?.text?.match(/<@([A-Z0-9]+)>/);
+      if (!match && !action.value) {
+        console.error('Could not find celebrant ID in message or action');
+        return;
+      }
+      const celebrantId = match[1]
+
       const senderId = body.user.id;
 
       // First, ensure the celebrant exists in the birthdays table
@@ -330,10 +343,19 @@ function registerCommands(app) {
         return;
       }
 
-      // Clean up the user ID (remove <@ and >)
-      const cleanCelebrantId = celebrantId.replace(/[<@>]/g, '');
+      // Look up user info from Slack API
+      const result = await client.users.list();
+      const users = result.members;
 
-      await postBirthdayThread(client, cleanCelebrantId);
+      // Extract user ID from mention format <@U1234>
+      const userName = celebrantId.replace(/[<@>]/g, '');
+      const user = users.find(user => user.name === userName);
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      await postBirthdayThread(client, user.id);
       await say({
         text: "Birthday thread posted",
         blocks: [
