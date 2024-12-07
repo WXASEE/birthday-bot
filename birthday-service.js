@@ -211,14 +211,17 @@ async function postBirthdayThread(client, celebrantId) {
       ]
     });
 
+    console.log(`Getting descriptions for ${celebrantId}`);
     // Get all descriptions and combine them into one message
     const descriptions = statements.getDescriptionMessages.all(celebrantId);
     
     if (descriptions.length > 0) {
       // Generate poem from descriptions
+      console.log(`Generating poem for ${celebrantId}`);
       const poem = await generateBirthdayPoem(descriptions);
 
       // Post the poem first in the thread
+      console.log(`Posting poem for ${celebrantId}`);
       await client.chat.postMessage({
         channel: BIRTHDAY_CHANNEL,
         thread_ts: mainPost.ts,
@@ -241,9 +244,11 @@ async function postBirthdayThread(client, celebrantId) {
       statements.markDescriptionMessagesAsSent.run(celebrantId);
     }
 
+    console.log(`Getting birthday messages for ${celebrantId}`);
     const messages = statements.getBirthdayMessages.all(celebrantId);
     
     for (const message of messages) {
+      console.log(`Posting birthday message for ${celebrantId} from ${message.sender_name}`);
       let text = `${message.sender_name} says:\n${message.message}`;
       if (message.media_url) {
         text += `<${message.media_url}|.>`;
