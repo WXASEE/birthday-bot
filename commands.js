@@ -227,7 +227,7 @@ function registerCommands(app) {
 
       const senderId = body.user.id;
 
-      // First, ensure the celebrant exists in the birthdays table
+      // Ensure the celebrant exists in the birthdays table
       const exists = statements.checkUserExists.get(celebrantId);
       if (!exists.count) {
         // Insert a temporary record if user doesn't exist
@@ -292,7 +292,13 @@ function registerCommands(app) {
         if (mediaUrl) {
           confirmationMessage += " with media";
         }
-        confirmationMessage += "! 🎉";
+        confirmationMessage += " for <@" + celebrantId + ">! 🎉";
+
+        // Delete the original message containing the form
+        await client.chat.delete({
+          channel: body.channel.id,
+          ts: body.message.ts
+        });
 
         // Confirm receipt to the sender
         await client.chat.postMessage({
