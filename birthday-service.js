@@ -25,6 +25,16 @@ const getRandomPrompt = () => {
   return descriptionPrompts[randomIndex];
 };
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function chunk(array, size) {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
+
 async function generateBirthdayPoem(descriptions) {
   try {
     // Format descriptions into a single string
@@ -32,7 +42,6 @@ async function generateBirthdayPoem(descriptions) {
       .map(desc => desc.message)
       .join('\n');
 
-    console.log(descriptionsText)
     // Create the prompt for Claude
     const prompt = `Based on these descriptions of some from their colleagues:\n\n${descriptionsText}\n\nWrite a warm, personal, and fun birthday poem that incorporates these qualities and characteristics. The poem should be light-hearted and celebratory. Just return the poem and no introduction or other text. Format it with line breaks.`;
 
@@ -58,9 +67,92 @@ async function generateBirthdayPoem(descriptions) {
   }
 }
 
+const generateBirthdayCollectionBlocks = (celebrantId) => {
+  const descriptionPrompt = getRandomPrompt();
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `Hey! :birthday: *<@${celebrantId}>* has a birthday coming up in 7 days!`
+      }
+    },
+    {
+      type: "input",
+      block_id: "message_input_block",
+      element: {
+        type: "plain_text_input",
+        action_id: "message_input",
+        multiline: true,
+        placeholder: {
+          type: "plain_text",
+          text: "Type your birthday message here..."
+        }
+      },
+      label: {
+        type: "plain_text",
+        text: "Your Birthday Message"
+      }
+    },
+    {
+      type: "input",
+      block_id: "media_input_block",
+      element: {
+        type: "plain_text_input",
+        action_id: "media_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Paste a URL to a GIF or image..."
+        }
+      },
+      label: {
+        type: "plain_text", 
+        text: "Optional: Add Media (Hint: Use /giphy to search for a GIF and copy the URL)"
+      },
+      optional: true
+    },
+    {
+      type: "divider"
+    },
+    {
+      type: "input",
+      block_id: "description_input_block",
+      element: {
+        type: "plain_text_input",
+        action_id: "description_input",
+        multiline: true,
+        placeholder: {
+          type: "plain_text",
+          text: `${descriptionPrompt}`
+        }
+      },
+      label: {
+        type: "plain_text",
+        text: "Describe Them"
+      },
+      optional: true
+    },
+    {
+      type: "actions",
+      block_id: "submit_block",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Submit",
+            emoji: true
+          },
+          action_id: "submit_birthday_content",
+          value: `${celebrantId}`
+        }
+      ]
+    }
+  ]
+}
+
 async function triggerBirthdayCollection(client, celebrantId) {
   try {
-
     const exists = statements.checkUserExists.get(celebrantId);
     if (!exists.count) {
       statements.insertBirthday.run(celebrantId, null);
@@ -77,118 +169,43 @@ async function triggerBirthdayCollection(client, celebrantId) {
       user.name !== celebrantId
     );
 
-    console.log(`Attempting to send messages to ${users.length} users`);
+    const userBatches = chunk(users, 1);
 
-    for (const user of users) {
-      try {
+    console.log(`Attempting to send messages to ${users.length} users in ${userBatches.length} batches`);
 
-        // Check if we can message this user
+    for (const batch of userBatches) {
+      // Process each batch with a delay between batches
+      await Promise.all(batch.map(async (user) => {
         try {
           // Try to open a DM channel first
-          const conversationResponse = await client.conversations.open({
-            users: user.id
-          });
-          
-          if (!conversationResponse.ok) {
-            console.log(`Cannot open DM with user ${user.id}`);
-            continue;
-          }
-        } catch (dmError) {
-          console.log(`Error opening DM with user ${user.id}:`, dmError);
-          continue;
-        }
-
-        const descriptionPrompt = getRandomPrompt();
-
-        console.log(`Sending birthday message collection to ${user.id}`)
-
-        await client.chat.postMessage({
-          channel: user.id,
-          text: `Birthday message collection for <@${celebrantId}>`,
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `Hey! :birthday: *<@${celebrantId}>* has a birthday coming up in 7 days!`
-              }
-            },
-            {
-              type: "input",
-              block_id: "message_input_block",
-              element: {
-                type: "plain_text_input",
-                action_id: "message_input",
-                multiline: true,
-                placeholder: {
-                  type: "plain_text",
-                  text: "Type your birthday message here..."
-                }
-              },
-              label: {
-                type: "plain_text",
-                text: "Your Birthday Message"
-              }
-            },
-            {
-              type: "input",
-              block_id: "media_input_block",
-              element: {
-                type: "plain_text_input",
-                action_id: "media_input",
-                placeholder: {
-                  type: "plain_text",
-                  text: "Paste a URL to a GIF or image..."
-                }
-              },
-              label: {
-                type: "plain_text", 
-                text: "Optional: Add Media (Hint: Use /giphy to search for a GIF and copy the URL)"
-              },
-              optional: true
-            },
-            {
-              type: "divider"
-            },
-            {
-              type: "input",
-              block_id: "description_input_block",
-              element: {
-                type: "plain_text_input",
-                action_id: "description_input",
-                multiline: true,
-                placeholder: {
-                  type: "plain_text",
-                  text: `${descriptionPrompt}`
-                }
-              },
-              label: {
-                type: "plain_text",
-                text: "Describe Them"
-              },
-              optional: true
-            },
-            {
-              type: "actions",
-              block_id: "submit_block",
-              elements: [
-                {
-                  type: "button",
-                  text: {
-                    type: "plain_text",
-                    text: "Submit",
-                    emoji: true
-                  },
-                  action_id: "submit_birthday_content",
-                  value: `${celebrantId}`
-                }
-              ]
+          try {
+            const conversationResponse = await client.conversations.open({
+              users: user.id
+            });
+            
+            if (!conversationResponse.ok) {
+              console.log(`Cannot open DM with user ${user.id}`);
+              return;
             }
-          ]
-        });
-      } catch (error) {
-        console.error(`Error sending birthday collection message to ${user.id}:`, error);
-      }
+          } catch (dmError) {
+            console.log(`Error opening DM with user ${user.id}:`, dmError);
+            return;
+          }
+
+          console.log(`Sending birthday message collection to ${user.id}`);
+
+          await client.chat.postMessage({
+            channel: user.id,
+            text: `Birthday message collection for <@${celebrantId}>`,
+            blocks: generateBirthdayCollectionBlocks(celebrantId)
+          });
+        } catch (error) {
+          console.error(`Error sending birthday collection message to ${user.id}:`, error);
+        }
+      }));
+      
+      // Add delay between batches to prevent rate limiting
+      await delay(2500);
     }
   } catch (error) {
     console.error('Error triggering birthday collection:', error);
