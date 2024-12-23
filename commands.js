@@ -230,8 +230,7 @@ function registerCommands(app) {
       // Ensure the celebrant exists in the birthdays table
       const exists = statements.checkUserExists.get(celebrantId);
       if (!exists.count) {
-        // Insert a temporary record if user doesn't exist
-        statements.insertBirthday.run(celebrantId, null);
+        throw new Error('User does not exist in birthdays table');
       }
 
       // Get sender's user info
@@ -320,7 +319,7 @@ function registerCommands(app) {
       try {
         await client.chat.postMessage({
           channel: body.user.id,
-          text: "Sorry, there was an error submitting your content. Please try again."
+          text: "Sorry, there was an error submitting your content. Please let Ian know and try again."
         });
       } catch (msgError) {
         console.error('Error sending error message:', msgError);

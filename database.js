@@ -88,9 +88,7 @@ function checkDatabase() {
 module.exports = {
   db,
   checkDatabase,
-  // Add your prepared statements here
   statements: {
-    // Modify insertBirthday to be more flexible
     insertBirthday: db.prepare(`
       INSERT OR REPLACE INTO birthdays (
         user_id, 
@@ -116,10 +114,9 @@ module.exports = {
       SELECT * FROM birthdays
     `),
     
-    updateNotificationSent: db.prepare(`
+    updateLastNotificationDate: db.prepare(`
       UPDATE birthdays
-      SET notification_sent = ?,
-          last_notification_date = CURRENT_TIMESTAMP
+      SET last_notification_date = DATE('now')
       WHERE user_id = ?
     `),
 

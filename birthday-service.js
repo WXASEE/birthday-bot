@@ -155,7 +155,15 @@ async function triggerBirthdayCollection(client, celebrantId) {
   try {
     const exists = statements.checkUserExists.get(celebrantId);
     if (!exists.count) {
-      statements.insertBirthday.run(celebrantId, null);
+      throw new Error('User does not exist in birthdays table');
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const birthday = statements.getBirthday.get(celebrantId);
+    
+    if (birthday.last_notification_date === today) {
+      console.log(`Already sent notifications for ${celebrantId} today`);
+      return;
     }
     
     const result = await client.users.list();
@@ -169,7 +177,7 @@ async function triggerBirthdayCollection(client, celebrantId) {
       user.name !== celebrantId
     );
 
-    const userBatches = chunk(users, 1);
+    const userBatches = chunk(users, 10);
 
     console.log(`Attempting to send messages to ${users.length} users in ${userBatches.length} batches`);
 
@@ -207,6 +215,8 @@ async function triggerBirthdayCollection(client, celebrantId) {
       // Add delay between batches to prevent rate limiting
       await delay(2500);
     }
+    console.log(`Updating last notification date for ${celebrantId}`);
+    statements.updateLastNotificationDate.run(celebrantId);
   } catch (error) {
     console.error('Error triggering birthday collection:', error);
   }
