@@ -6,8 +6,9 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Birthday channel ID where messages will be posted
+// Channel IDs where messages will be posted
 const BIRTHDAY_CHANNEL = process.env.BIRTHDAY_CHANNEL;
+const ADMIN_CHANNEL = process.env.ADMIN_CHANNEL;
 
 // Description message prompts
 const descriptionPrompts = [
@@ -215,15 +216,38 @@ async function triggerBirthdayCollection(client, celebrantId) {
       // Add delay between batches to prevent rate limiting
       await delay(2500);
     }
+
+    await client.chat.postMessage({
+      channel: ADMIN_CHANNEL,
+      text: `Birthday message collection sent to ${users.length} users`
+    });
+
     console.log(`Updating last notification date for ${celebrantId}`);
     statements.updateLastNotificationDate.run(celebrantId);
   } catch (error) {
+    await client.chat.postMessage({
+      channel: ADMIN_CHANNEL,
+      text: `Error with birthday collection`
+    });
     console.error('Error triggering birthday collection:', error);
   }
 }
 
 async function postBirthdayThread(client, celebrantId) {
   try {
+
+    console.log(`Getting birthday messages for ${celebrantId}`);
+    const messages = statements.getBirthdayMessages.all(celebrantId);
+
+    if (messages.length === 0) {
+      await client.chat.postMessage({
+        channel: ADMIN_CHANNEL,
+        text: `:sob: No birthday messages found for ${celebrantId}`
+      });
+      console.log(`No birthday messages found for ${celebrantId}`);
+      return;
+    }
+
     const mainPost = await client.chat.postMessage({
       channel: BIRTHDAY_CHANNEL,
       text: `Happy Birthday <@${celebrantId}>! 🎂`,
@@ -270,9 +294,6 @@ async function postBirthdayThread(client, celebrantId) {
       // Mark descriptions as sent
       statements.markDescriptionMessagesAsSent.run(celebrantId);
     }
-
-    console.log(`Getting birthday messages for ${celebrantId}`);
-    const messages = statements.getBirthdayMessages.all(celebrantId);
     
     for (const message of messages) {
       console.log(`Posting birthday message for ${celebrantId} from ${message.sender_name}`);
@@ -291,6 +312,10 @@ async function postBirthdayThread(client, celebrantId) {
     statements.markMessagesAsSent.run(celebrantId);
 
   } catch (error) {
+    await client.chat.postMessage({
+      channel: ADMIN_CHANNEL,
+      text: `Error with birthday thread`
+    });
     console.error('Error posting birthday thread:', error);
   }
 }

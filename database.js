@@ -137,6 +137,12 @@ module.exports = {
       ORDER BY created_at ASC
     `),
 
+    getBirthdayMessageCount: db.prepare(`
+      SELECT COUNT(*) as message_count FROM birthday_messages 
+      WHERE celebrant_id = ? 
+      AND sent_in_thread = FALSE
+    `),
+
     markMessagesAsSent: db.prepare(`
       UPDATE birthday_messages
       SET sent_in_thread = TRUE
