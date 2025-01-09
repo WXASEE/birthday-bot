@@ -2,6 +2,8 @@ const cron = require('node-cron');
 const { db, statements } = require('./database');
 const { triggerBirthdayCollection, postBirthdayThread } = require('./birthday-service');
 
+const ADMIN_CHANNEL = process.env.ADMIN_CHANNEL;
+
 function setupCronJobs(app) {
   // Run every day at 9:00 AM Europe/London time
   cron.schedule('0 9 * * *', async () => {
@@ -27,6 +29,13 @@ function setupCronJobs(app) {
           console.log(`Triggering collection for ${birthday.user_id}`)
           // Trigger collection for birthdays in 7 days
           await triggerBirthdayCollection(app.client, birthday.user_id);
+        } else if (diffDays === 1) {
+          const messageCount = statements.getBirthdayMessageCount.get(birthday.user_id).message_count || 0;
+
+          await app.client.chat.postMessage({
+            channel: ADMIN_CHANNEL,
+            text: `${messageCount} messages collected for upcoming birthday`
+          });
         } else if (diffDays === 0) {
           console.log(`Posting thread for ${birthday.user_id}`)
           // Post thread for today's birthdays
