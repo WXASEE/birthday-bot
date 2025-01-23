@@ -57,6 +57,8 @@ async function generateBirthdayPoem(descriptions) {
       }]
     });
 
+    console.log(response)
+
     // Extract the poem from the response
     const poem = response.content[0].text.trim();
     return poem;
