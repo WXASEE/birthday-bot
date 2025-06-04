@@ -2,6 +2,7 @@ const { App } = require('@slack/bolt');
 require('dotenv').config();
 const registerCommands = require('./commands');
 const { setupCronJobs } = require('./birthday-cron');
+const { syncBirthdays } = require('./sync-birthdays');
 const express = require('express');
 
 
@@ -20,16 +21,17 @@ expressApp.get('/', (req, res) => {
   res.send('Birthday Bot is running!');
 });
 
-// Register commands and setup cron jobs
-registerCommands(app);
-setupCronJobs(app);
 
 // Start both the Socket Mode app and the Express server
 (async () => {
+  await syncBirthdays();
+  registerCommands(app);
+  setupCronJobs(app);
+
   // Start the Bolt app (Socket Mode)
   await app.start();
   console.log('⚡️ Birthday Bot Socket Mode started!');
-  
+
   // Start Express server to satisfy Render
   const port = process.env.PORT || 10000;
   expressApp.listen(port, '0.0.0.0', () => {

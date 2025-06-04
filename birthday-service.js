@@ -1,10 +1,9 @@
 const cron = require('node-cron');
 const { db, statements } = require('./database');
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenAI } = require('@google/genai');
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Use ANTHROPIC_API_KEY to authenticate with Gemini Flash 2.0
+const gemini = new GoogleGenAI({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Channel IDs where messages will be posted
 const BIRTHDAY_CHANNEL = process.env.BIRTHDAY_CHANNEL;
@@ -43,29 +42,20 @@ async function generateBirthdayPoem(descriptions) {
       .map(desc => desc.message)
       .join('\n');
 
-    // Create the prompt for Claude
+    // Create the prompt for Gemini
     const prompt = `Based on these descriptions of some from their colleagues:\n\n${descriptionsText}\n\nWrite a warm, personal, and fun birthday poem that incorporates these qualities and characteristics. The poem should be light-hearted and celebratory. Just return the poem and no introduction or other text. Format it with line breaks.`;
 
-    // Call Claude API
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 150,
-      temperature: 0.7,
-      messages: [{
-        role: 'user',
-        content: prompt
-      }]
+    // Call Gemini API using the Flash 2.0 model
+    const result = await gemini.models.generateContent({
+      model: 'gemini-2.0-flash-001',
+      contents: prompt
     });
-
-    console.log(response)
-
-    // Extract the poem from the response
-    const poem = response.content[0].text.trim();
+    const poem = result.text.trim();
     return poem;
 
   } catch (error) {
-    console.error('Error generating poem with Claude:', error);
-    // Return a fallback poem if Claude API fails
+    console.error('Error generating poem with Gemini:', error);
+    // Return a fallback poem if Gemini API fails
     return "Here's to another year of joy and cheer,\nWith colleagues who hold you ever so dear.\nYour presence makes our workplace bright,\nHappy birthday, may your day be just right!";
   }
 }
