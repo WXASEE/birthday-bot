@@ -242,13 +242,13 @@ async function postBirthdayThread(client, celebrantId) {
 
     const mainPost = await client.chat.postMessage({
       channel: BIRTHDAY_CHANNEL,
-      text: `Happy Birthday <@${celebrantId}>! 🎂`,
+      text: `สุขสันต์วันเกิด (Happy Birthday) <@${celebrantId}>! 🎂`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `:birthday: *Happy Birthday <@${celebrantId}>!* :balloon:\n\nYour colleagues have some special messages for you! Check out the thread below. :arrow_down:`
+            text: `:birthday: *สุขสันต์วันเกิด (Happy Birthday) <@${celebrantId}>!* :balloon:\n\nYour colleagues have some special messages for you! Check out the thread below. :arrow_down:`
           }
         }
       ]
