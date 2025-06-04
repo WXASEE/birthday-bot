@@ -1,7 +1,6 @@
 # PostHog's Birthday Bot
 
-A Slack bot to collect and send birthday messages.
-It uses Google Gemini Flash 2.0 to generate personalized birthday poems and greets celebrants with "สุขสันต์วันเกิด (Happy Birthday)".
+
 
 ## Setup
 
