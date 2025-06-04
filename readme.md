@@ -2,6 +2,16 @@
 
 
 
+### Getting the Gemini API key
+
+The bot relies on Google's Gemini Flash 2.0 model to write poems. Create an
+API key in [Google AI Studio](https://ai.google.dev/) and set it in the
+`ANTHROPIC_API_KEY` environment variable:
+
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+```
+
 ## Setup
 
 ```
