@@ -21,6 +21,22 @@ function isValidDate(dateStr) {
   return true;
 }
 
+// Helper to find a user by ID from a mention
+async function findUserFromMention(client, userMention) {
+    const userId = userMention.replace(/[<@>]/g, '');
+    try {
+        const result = await client.users.info({ user: userId });
+        if (result.ok) {
+            return result.user;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error fetching user info:", error);
+        return null;
+    }
+}
+
+
 function registerCommands(app) {
   // Command to set birthday (DD-MM)
   app.command('/set-birthday', async ({ command, ack, say, client }) => {
@@ -41,41 +57,32 @@ function registerCommands(app) {
         return;
       }
 
-      try {
-        // Look up user info from Slack API
-        const result = await client.users.list();
-        const users = result.members;
-
-        // Extract user ID from mention format <@U1234>
-        const userName = userMention.replace(/[<@>]/g, '');
-        const user = users.find(user => user.name === userName);
+      const userId = userMention.replace(/[<@>]/g, '');
+      const user = await findUserFromMention(client, userId);
         
-        if (!user) {
-          throw new Error('User not found');
-        }
-        // Save to database
-        statements.insertBirthday.run(user.id, birthDate);
-
-        // Format date for display
-        const formattedDate = formatDate(birthDate);
-        const firstName = user.first_name || (user.real_name_normalized || user.real_name).split(' ')[0];
-
-        await say({
-          text: `Birthday set`,
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `✅ ${firstName}'s birthday set for *${formattedDate}*`
-              }
-            }
-          ]
-        });
-      } catch (userError) {
-        console.error('Error getting user info:', userError);
-        await say(`Error looking up user. Please try again with their exact Slack username.`);
+      if (!user) {
+        await say(`Could not find user ${userMention}. Please make sure it's a valid user mention.`);
+        return;
       }
+      // Save to database
+      statements.insertBirthday.run(user.id, birthDate);
+
+      // Format date for display
+      const formattedDate = formatDate(birthDate);
+      const firstName = user.profile.first_name || (user.real_name).split(' ')[0];
+
+      await say({
+        text: `Birthday set for ${firstName}`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `✅ ${firstName}'s birthday set for *${formattedDate}*`
+            }
+          }
+        ]
+      });
 
     } catch (error) {
       console.error('Error in /set-birthday command:', error);
@@ -88,7 +95,6 @@ function registerCommands(app) {
     try {
       await ack();
       
-      // Get all birthdays, ordered by upcoming date
       const birthdays = statements.getAllBirthdays.all();
       
       if (birthdays.length === 0) {
@@ -96,51 +102,47 @@ function registerCommands(app) {
         return;
       }
 
-      const result = await client.users.list();
-      const users = result.members;
+      // We need user info to display names
+      const userInfos = await Promise.all(
+        birthdays.map(b => findUserFromMention(client, b.user_id).catch(() => null))
+      );
+      
+      const birthdaysWithNames = birthdays.map((birthday, index) => {
+        const user = userInfos[index];
+        const slackName = user ? (user.real_name || user.name) : `<@${birthday.user_id}>`;
+        return { ...birthday, slackName };
+      }).filter(b => b.birth_date !== '1900-01-01');
 
-      // Group birthdays by month
-      const birthdaysByMonth = birthdays.reduce((acc, birthday) => {
-        
-        // Skip placeholder birthdays
-        if (birthday.birth_date === '1900-01-01') {
-          return acc;
-        }
-
+      const birthdaysByMonth = birthdaysWithNames.reduce((acc, birthday) => {
         const [day, month] = birthday.birth_date.split('-');
         const date = new Date(2000, parseInt(month) - 1, parseInt(day));
         const monthName = date.toLocaleString('default', { month: 'long' });
 
-        const user = users.find(user => user.id === birthday.user_id);
-        let slackName;
-        if (!user) {
-          slackName = '<@' + birthday.user_id + '>';
-        } else {
-          slackName = user.real_name_normalized || user.real_name;
-        }
-        
         if (!acc[monthName]) {
           acc[monthName] = [];
         }
         acc[monthName].push({
           day: parseInt(day),
-          slackName: slackName
+          slackName: birthday.slackName
         });
         return acc;
       }, {});
 
-      // Create formatted message
       let message = "*🎂 Birthday Calendar*\n\n";
       
-      for (const month of Object.keys(birthdaysByMonth)) {
-        message += `*${month}*\n`;
-        const sortedBirthdays = birthdaysByMonth[month].sort((a, b) => a.day - b.day);
-        
-        for (const bday of sortedBirthdays) {
-          message += `• ${bday.day} - ${bday.slackName}\n`;
+      // Sort months correctly
+      const monthOrder = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      
+      monthOrder.forEach(month => {
+        if (birthdaysByMonth[month]) {
+            message += `*${month}*\n`;
+            const sortedBirthdays = birthdaysByMonth[month].sort((a, b) => a.day - b.day);
+            for (const bday of sortedBirthdays) {
+              message += `• ${bday.day} - ${bday.slackName}\n`;
+            }
+            message += "\n";
         }
-        message += "\n";
-      }
+      });
 
       await say({
         text: "Birthday Calendar",
@@ -161,37 +163,22 @@ function registerCommands(app) {
     }
   });
 
+  // Command to manually trigger message collection
   app.command('/collect-birthday-messages', async ({ command, ack, client, say }) => {
     try {
       await ack();
-      const [celebrantId] = command.text.split(' ');
+      const userMention = command.text.trim();
       
-      if (!celebrantId) {
-        await say({
-          text: "Please provide a user ID",
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "Please provide a user ID.\nFormat: `/collect-birthday-messages @user`"
-              }
-            }
-          ]
-        });
+      if (!userMention) {
+        await say("Please provide a user mention, e.g., `/collect-birthday-messages @user`");
         return;
       }
 
-      // Look up user info from Slack API
-      const result = await client.users.list();
-      const users = result.members;
-
-      // Extract user ID from mention format <@U1234>
-      const userName = celebrantId.replace(/[<@>]/g, '');
-      const user = users.find(user => user.name === userName);
+      const user = await findUserFromMention(client, userMention);
       
       if (!user) {
-        throw new Error('User not found');
+        await say(`Could not find user ${userMention}.`);
+        return;
       }
 
       await triggerBirthdayCollection(client, user.id);
@@ -202,7 +189,7 @@ function registerCommands(app) {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: ":mailbox_with_mail: Birthday message collection has been initiated!"
+              text: `:mailbox_with_mail: Birthday message collection for <@${user.id}> has been initiated!`
             }
           }
         ]
@@ -213,23 +200,29 @@ function registerCommands(app) {
     }
   });
 
+  // Action handler for the "Submit" button
   app.action('submit_birthday_content', async ({ body, ack, client, action }) => {
     try {
       await ack();
       
-      // Extract celebrant ID from message text
-      const match = body.message?.text?.match(/<@([A-Z0-9]+)>/);
-      if (!match && !action.value) {
-        console.error('Could not find celebrant ID in message or action');
-        return;
+      // Get celebrant ID reliably from the action's value
+      const celebrantId = action.value;
+      if (!celebrantId) {
+          console.error('Could not find celebrant ID in action value');
+          // Optionally send an error message to the user
+          await client.chat.postMessage({
+              channel: body.user.id,
+              text: "Sorry, there was an error submitting your content. The celebrant ID was missing. Please contact the administrator."
+          });
+          return;
       }
-      const celebrantId = match[1]
 
       const senderId = body.user.id;
 
       // Ensure the celebrant exists in the birthdays table
       const exists = statements.checkUserExists.get(celebrantId);
       if (!exists.count) {
+        // This case should be rare, but good to handle
         throw new Error('User does not exist in birthdays table');
       }
 
@@ -237,89 +230,57 @@ function registerCommands(app) {
       const userResult = await client.users.info({ user: senderId });
       const senderName = userResult.user.real_name || userResult.user.name;
 
-      // Find the message, description and media input blocks
-      const messageInputBlock = Object.values(body.state.values).find(block => 
-        block.message_input !== undefined
-      );
-      const descriptionInputBlock = body.state.values.description_input_block;
-      const mediaInputBlock = body.state.values.media_input_block;
+      // Extract values from the view submission
+      const values = body.state.values;
+      const messageText = values.message_input_block?.message_input?.value || null;
+      const descriptionText = values.description_input_block?.description_input?.value || null;
+      const mediaUrl = values.media_input_block?.media_input?.value || null;
 
-      const messageText = messageInputBlock?.message_input.value;
-      const descriptionText = descriptionInputBlock?.description_input.value;
-      const mediaUrl = mediaInputBlock?.media_input.value;
-
-      // Check if at least one input has content
       if (!messageText && !descriptionText) {
         await client.chat.postMessage({
           channel: senderId,
-          text: "Please enter either a birthday message or description before submitting!"
+          text: "Please enter either a birthday message or a description before submitting!"
         });
         return;
       }
-
-      try {
-        // Save message if provided
-        if (messageText) {
-          statements.insertBirthdayMessage.run(
-            celebrantId,    // who the birthday is for
-            senderId,       // who sent the message
-            senderName,     // sender's real name
-            messageText,    // the actual message
-            mediaUrl       // optional media URL
-          );
-        }
-
-        // Save description if provided
-        if (descriptionText) {
-          statements.insertDescriptionMessage.run(
-            celebrantId,    // who the birthday is for
-            senderId,       // who sent the description
-            senderName,     // sender's real name
-            descriptionText // the actual description
-          );
-        }
-
-        // Customize confirmation message based on what was submitted
-        let confirmationMessage = "Thanks for submitting your ";
-        if (messageText && descriptionText) {
-          confirmationMessage += "birthday message and description";
-        } else if (messageText) {
-          confirmationMessage += "birthday message";
-        } else {
-          confirmationMessage += "description";
-        }
-        if (mediaUrl) {
-          confirmationMessage += " with media";
-        }
-        confirmationMessage += " for <@" + celebrantId + ">! 🎉";
-
-        // Delete the original message containing the form
-        await client.chat.delete({
-          channel: body.channel.id,
-          ts: body.message.ts
-        });
-
-        // Confirm receipt to the sender
-        await client.chat.postMessage({
-          channel: senderId,
-          text: confirmationMessage
-        });
-
-        console.log(`Stored birthday content from ${senderId} for ${celebrantId}`);
-      } catch (dbError) {
-        console.error('Database error:', dbError);
-        await client.chat.postMessage({
-          channel: senderId,
-          text: "Sorry, there was an error saving your submission(s). Please try again."
-        });
+      
+      if (messageText) {
+        statements.insertBirthdayMessage.run(celebrantId, senderId, senderName, messageText, mediaUrl);
       }
+      if (descriptionText) {
+        statements.insertDescriptionMessage.run(celebrantId, senderId, senderName, descriptionText);
+      }
+
+      let confirmationMessage = "Thanks for submitting your ";
+      if (messageText && descriptionText) {
+        confirmationMessage += "birthday message and description";
+      } else if (messageText) {
+        confirmationMessage += "birthday message";
+      } else {
+        confirmationMessage += "description";
+      }
+      confirmationMessage += ` for <@${celebrantId}>! 🎉`;
+
+      // Delete the original message containing the form
+      await client.chat.delete({
+        channel: body.channel.id,
+        ts: body.message.ts
+      });
+
+      // Confirm receipt to the sender
+      await client.chat.postMessage({
+        channel: senderId,
+        text: confirmationMessage
+      });
+
+      console.log(`Stored birthday content from ${senderId} for ${celebrantId}`);
 
     } catch (error) {
       console.error('Error handling content submission:', error);
       try {
         await client.chat.postMessage({
           channel: body.user.id,
-          text: "Sorry, there was an error submitting your content. Please let Ian know and try again."
+          text: "Sorry, there was an error submitting your content. Please contact the administrator."
         });
       } catch (msgError) {
         console.error('Error sending error message:', msgError);
@@ -327,37 +288,22 @@ function registerCommands(app) {
     }
   });
 
+  // Command to manually post the birthday thread
   app.command('/post-birthday-thread', async ({ command, ack, client, say }) => {
     try {
       await ack();
-      const celebrantId = command.text.trim();
+      const userMention = command.text.trim();
       
-      if (!celebrantId) {
-        await say({
-          text: "Please provide a user ID",
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "Please provide a user ID.\nFormat: `/post-birthday-thread @user`"
-              }
-            }
-          ]
-        });
+      if (!userMention) {
+        await say("Please provide a user mention, e.g., `/post-birthday-thread @user`");
         return;
       }
 
-      // Look up user info from Slack API
-      const result = await client.users.list();
-      const users = result.members;
-
-      // Extract user ID from mention format <@U1234>
-      const userName = celebrantId.replace(/[<@>]/g, '');
-      const user = users.find(user => user.name === userName);
+      const user = await findUserFromMention(client, userMention);
       
       if (!user) {
-        throw new Error('User not found');
+        await say(`Could not find user ${userMention}.`);
+        return;
       }
 
       await postBirthdayThread(client, user.id);
@@ -368,7 +314,7 @@ function registerCommands(app) {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: ":tada: Birthday thread has been posted!"
+              text: `:tada: Birthday thread for <@${user.id}> has been posted!`
             }
           }
         ]
