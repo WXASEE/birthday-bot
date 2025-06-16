@@ -3,38 +3,32 @@ require('dotenv').config();
 const registerCommands = require('./commands');
 const { setupCronJobs } = require('./birthday-cron');
 const { syncBirthdays } = require('./sync-birthdays');
-const express = require('express');
 
-
+// Initialize the app with token and signing secret for HTTP mode.
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-  socketMode: true,
-  appToken: process.env.SLACK_APP_TOKEN
+  signingSecret: process.env.SLACK_SIGNING_SECRET
+  // Bolt will create an ExpressReceiver for you by default
 });
 
-// Create an Express app to satisfy Render's port binding requirement
-const expressApp = express();
-
-// Add a simple health check endpoint
-expressApp.get('/', (req, res) => {
-  res.send('Birthday Bot is running!');
+// Add a simple health check endpoint for the hosting service
+app.receiver.app.get('/health-check', (req, res) => {
+  res.status(200).send('Birthday Bot is running!');
 });
 
 
-// Start both the Socket Mode app and the Express server
+// Start the application
 (async () => {
+  // Sync birthdays on startup if configured
   await syncBirthdays();
+
+  // Register all commands, actions, and cron jobs
   registerCommands(app);
   setupCronJobs(app);
 
-  // Start the Bolt app (Socket Mode)
-  await app.start();
-  console.log('⚡️ Birthday Bot Socket Mode started!');
-
-  // Start Express server to satisfy Render
+  // Start the server, which will listen for events from Slack
   const port = process.env.PORT || 10000;
-  expressApp.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 Express server is running on port ${port}`);
-  });
+  await app.start(port);
+
+  console.log(`⚡️ Birthday Bot is running on port ${port}!`);
 })();
