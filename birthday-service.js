@@ -1,9 +1,9 @@
 const cron = require('node-cron');
 const { db, statements } = require('./database');
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/genai');
 
-// Use ANTHROPIC_API_KEY to authenticate with Gemini Flash 2.0
-const gemini = new GoogleGenAI({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Use GOOGLE_API_KEY to authenticate with Gemini
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
 // Channel IDs where messages will be posted
 const BIRTHDAY_CHANNEL = process.env.BIRTHDAY_CHANNEL;
@@ -37,21 +37,23 @@ function chunk(array, size) {
 
 async function generateBirthdayPoem(descriptions) {
   try {
+    // Get the generative model
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
     // Format descriptions into a single string
     const descriptionsText = descriptions
-      .map(desc => desc.message)
+      .map(desc => `- ${desc.message}`)
       .join('\n');
 
     // Create the prompt for Gemini
-    const prompt = `Based on these descriptions of some from their colleagues:\n\n${descriptionsText}\n\nWrite a warm, personal, and fun birthday poem that incorporates these qualities and characteristics. The poem should be light-hearted and celebratory. Just return the poem and no introduction or other text. Format it with line breaks.`;
+    const prompt = `Based on these descriptions of someone from their colleagues:\n\n${descriptionsText}\n\nWrite a warm, personal, and fun birthday poem that incorporates these qualities and characteristics. The poem should be light-hearted and celebratory. Just return the poem and no introduction or other text. Format it with line breaks.`;
 
-    // Call Gemini API using the Flash 2.0 model
-    const result = await gemini.models.generateContent({
-      model: 'gemini-2.0-flash-001',
-      contents: prompt
-    });
-    const poem = result.text.trim();
-    return poem;
+    // Call Gemini API
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const poem = response.text();
+
+    return poem.trim();
 
   } catch (error) {
     console.error('Error generating poem with Gemini:', error);
@@ -166,8 +168,7 @@ async function triggerBirthdayCollection(client, celebrantId) {
       !user.is_restricted && 
       !user.is_ultra_restricted &&
       user.id !== celebrantId && 
-      user.id !== 'USLACKBOT' &&
-      user.name !== celebrantId
+      user.id !== 'USLACKBOT'
     );
 
     const userBatches = chunk(users, 10);
@@ -175,43 +176,29 @@ async function triggerBirthdayCollection(client, celebrantId) {
     console.log(`Attempting to send messages to ${users.length} users in ${userBatches.length} batches`);
 
     for (const batch of userBatches) {
-      // Process each batch with a delay between batches
       await Promise.all(batch.map(async (user) => {
         try {
-          // Try to open a DM channel first
-          try {
-            const conversationResponse = await client.conversations.open({
-              users: user.id
-            });
-            
-            if (!conversationResponse.ok) {
-              console.log(`Cannot open DM with user ${user.id}`);
-              return;
-            }
-          } catch (dmError) {
-            console.log(`Error opening DM with user ${user.id}:`, dmError);
-            return;
-          }
-
-          console.log(`Sending birthday message collection to ${user.id}`);
-
           await client.chat.postMessage({
             channel: user.id,
             text: `Birthday message collection for <@${celebrantId}>`,
             blocks: generateBirthdayCollectionBlocks(celebrantId)
           });
+          console.log(`Sent birthday message collection to ${user.id}`);
         } catch (error) {
-          console.error(`Error sending birthday collection message to ${user.id}:`, error);
+           if (error.data.error === 'cannot_dm_user') {
+               console.log(`Skipping user ${user.id} because DMs are not open.`);
+           } else {
+               console.error(`Error sending birthday collection message to ${user.id}:`, error.data);
+           }
         }
       }));
       
-      // Add delay between batches to prevent rate limiting
-      await delay(2500);
+      await delay(2500); // Delay between batches to avoid rate limits
     }
 
     await client.chat.postMessage({
       channel: ADMIN_CHANNEL,
-      text: `Birthday message collection sent to ${users.length} users`
+      text: `Birthday message collection trigger sent to ${users.length} users for <@${celebrantId}>.`
     });
 
     console.log(`Updating last notification date for ${celebrantId}`);
@@ -219,7 +206,7 @@ async function triggerBirthdayCollection(client, celebrantId) {
   } catch (error) {
     await client.chat.postMessage({
       channel: ADMIN_CHANNEL,
-      text: `Error with birthday collection`
+      text: `Error triggering birthday collection for <@${celebrantId}>: ${error.message}`
     });
     console.error('Error triggering birthday collection:', error);
   }
@@ -227,16 +214,24 @@ async function triggerBirthdayCollection(client, celebrantId) {
 
 async function postBirthdayThread(client, celebrantId) {
   try {
-
     console.log(`Getting birthday messages for ${celebrantId}`);
     const messages = statements.getBirthdayMessages.all(celebrantId);
 
     if (messages.length === 0) {
+      console.log(`No birthday messages found for ${celebrantId}, posting a default message.`);
       await client.chat.postMessage({
-        channel: ADMIN_CHANNEL,
-        text: `:sob: No birthday messages found for ${celebrantId}`
+        channel: BIRTHDAY_CHANNEL,
+        text: `สุขสันต์วันเกิด (Happy Birthday) <@${celebrantId}>! 🎂`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:birthday: *สุขสันต์วันเกิด (Happy Birthday) <@${celebrantId}>!* :balloon:\n\nWishing you a fantastic day and a wonderful year ahead!`
+            }
+          }
+        ]
       });
-      console.log(`No birthday messages found for ${celebrantId}`);
       return;
     }
 
@@ -254,27 +249,19 @@ async function postBirthdayThread(client, celebrantId) {
       ]
     });
 
-    console.log(`Getting descriptions for ${celebrantId}`);
-    // Get all descriptions and combine them into one message
     const descriptions = statements.getDescriptionMessages.all(celebrantId);
     
     if (descriptions.length > 0) {
-      // Generate poem from descriptions
-      console.log(`Generating poem for ${celebrantId}`);
       const poem = await generateBirthdayPoem(descriptions);
-
-      // Post the poem first in the thread
-      console.log(`Posting poem for ${celebrantId}`);
       await client.chat.postMessage({
         channel: BIRTHDAY_CHANNEL,
         thread_ts: mainPost.ts,
-        text: "*A special birthday poem for you:*\n\n" + poem + "\n\n:birthday: :sparkles: :cake:"
+        text: "*A special birthday poem for you:*\n\n" + poem
       });
 
-      // Post the descriptions
       let descriptionMessage = "*Here's what your colleagues say about you:*\n\n";
       for (const desc of descriptions) {
-        descriptionMessage += `• ${desc.message} _- ${desc.sender_name}_\n\n`;
+        descriptionMessage += `• ${desc.message} _- ${desc.sender_name}_\n`;
       }
       
       await client.chat.postMessage({
@@ -283,30 +270,54 @@ async function postBirthdayThread(client, celebrantId) {
         text: descriptionMessage
       });
 
-      // Mark descriptions as sent
       statements.markDescriptionMessagesAsSent.run(celebrantId);
     }
     
     for (const message of messages) {
-      console.log(`Posting birthday message for ${celebrantId} from ${message.sender_name}`);
       let text = `${message.sender_name} says:\n${message.message}`;
+      let blocks;
       if (message.media_url) {
-        text += `<${message.media_url}|.>`;
+        blocks = [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${message.sender_name} says:* \n${message.message}`
+            }
+          },
+          {
+            type: "image",
+            image_url: message.media_url,
+            alt_text: "Birthday Media"
+          }
+        ];
+        text += `\n${message.media_url}`; // Fallback text
+      } else {
+        blocks = [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${message.sender_name} says:* \n${message.message}`
+            }
+          }
+        ];
       }
+
       await client.chat.postMessage({
         channel: BIRTHDAY_CHANNEL,
         thread_ts: mainPost.ts,
-        text: text
+        text: text, // Fallback for notifications
+        blocks: blocks
       });
     }
 
-    // Mark messages as sent
     statements.markMessagesAsSent.run(celebrantId);
 
   } catch (error) {
     await client.chat.postMessage({
       channel: ADMIN_CHANNEL,
-      text: `Error with birthday thread`
+      text: `Error posting birthday thread for <@${celebrantId}>: ${error.message}`
     });
     console.error('Error posting birthday thread:', error);
   }
