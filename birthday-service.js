@@ -1,9 +1,23 @@
 const cron = require('node-cron');
 const { db, statements } = require('./database');
-const { GoogleGenerativeAI } = require('@google/genai');
+// Predefined birthday greetings to avoid using an LLM
+const birthdayGreetings = [
+  "🎉 Happy birthday! Wishing you a year full of success and joy!",
+  "Hope your special day is amazing. Happy birthday!",
+  "Cheers to another fantastic year ahead. Happy birthday!",
+  "May your birthday be as awesome as you are!",
+  "Wishing you lots of cake and laughter today!",
+  "Have a wonderful birthday and a brilliant year ahead!",
+  "Sending you our best wishes on your birthday!",
+  "May all your dreams come true this year. Happy birthday!",
+  "Enjoy your day to the fullest. Happy birthday!",
+  "Here's to a day filled with celebration. Happy birthday!",
+  "Warmest wishes for a very happy birthday!",
+  "Have an incredible birthday and a fantastic year!"
+];
 
-// Use GOOGLE_API_KEY to authenticate with Gemini
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const getRandomGreeting = () =>
+  birthdayGreetings[Math.floor(Math.random() * birthdayGreetings.length)];
 
 // Channel IDs where messages will be posted
 const BIRTHDAY_CHANNEL = process.env.BIRTHDAY_CHANNEL;
@@ -35,31 +49,8 @@ function chunk(array, size) {
   return chunks;
 }
 
-async function generateBirthdayPoem(descriptions) {
-  try {
-    // Get the generative model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
-    // Format descriptions into a single string
-    const descriptionsText = descriptions
-      .map(desc => `- ${desc.message}`)
-      .join('\n');
-
-    // Create the prompt for Gemini
-    const prompt = `Based on these descriptions of someone from their colleagues:\n\n${descriptionsText}\n\nWrite a warm, personal, and fun birthday poem that incorporates these qualities and characteristics. The poem should be light-hearted and celebratory. Just return the poem and no introduction or other text. Format it with line breaks.`;
-
-    // Call Gemini API
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const poem = response.text();
-
-    return poem.trim();
-
-  } catch (error) {
-    console.error('Error generating poem with Gemini:', error);
-    // Return a fallback poem if Gemini API fails
-    return "Here's to another year of joy and cheer,\nWith colleagues who hold you ever so dear.\nYour presence makes our workplace bright,\nHappy birthday, may your day be just right!";
-  }
+function generateBirthdayMessage() {
+  return getRandomGreeting();
 }
 
 const generateBirthdayCollectionBlocks = (celebrantId) => {
@@ -250,13 +241,13 @@ async function postBirthdayThread(client, celebrantId) {
     });
 
     const descriptions = statements.getDescriptionMessages.all(celebrantId);
-    
+
     if (descriptions.length > 0) {
-      const poem = await generateBirthdayPoem(descriptions);
+      const greeting = generateBirthdayMessage();
       await client.chat.postMessage({
         channel: BIRTHDAY_CHANNEL,
         thread_ts: mainPost.ts,
-        text: "*A special birthday poem for you:*\n\n" + poem
+        text: `*${greeting}*`
       });
 
       let descriptionMessage = "*Here's what your colleagues say about you:*\n\n";

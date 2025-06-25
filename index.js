@@ -1,6 +1,5 @@
 const { App } = require('@slack/bolt');
 require('dotenv').config();
-const registerCommands = require('./commands');
 const { setupCronJobs } = require('./birthday-cron');
 const { syncBirthdays } = require('./sync-birthdays');
 
@@ -22,8 +21,7 @@ app.receiver.app.get('/health-check', (req, res) => {
   // Sync birthdays on startup if configured
   await syncBirthdays();
 
-  // Register all commands, actions, and cron jobs
-  registerCommands(app);
+  // Register cron jobs
   setupCronJobs(app);
 
   // Start the server, which will listen for events from Slack

@@ -38,13 +38,13 @@ async function importFromSheet(sheetId) {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId,
-    range: 'Sheet1!A:B'
+    range: 'Sheet1!A:C'
   });
 
   const rows = res.data.values || [];
   for (const row of rows) {
-    const [id, date] = row;
-    if (id && date) {
+    const [id, date, status] = row;
+    if (id && date && (!status || status.toLowerCase() === 'active')) {
       statements.insertBirthday.run(id.trim(), date.trim());
     }
   }
