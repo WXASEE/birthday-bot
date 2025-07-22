@@ -1,51 +1,37 @@
 # PostHog's Birthday Bot
 
-
+A Slack bot that collects birthday wishes and posts them on the celebrant's working day. The bot runs automatically via a daily cron job and stores data in a local SQLite database.
 
 ## Setup
 
-```
+```bash
 npm install
 ```
 
-```
-node index.js
-```
-
-Set the following environment variables before running the bot:
-
+Create a `.env` file containing your Slack tokens and channel IDs:
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
 - `BIRTHDAY_CHANNEL`, `ADMIN_CHANNEL`, `MGMT_CHANNEL`, `HR_CHANNEL`
 - `HOLIDAY_CALENDAR_IDS` – comma separated Google Calendar IDs to pull holidays
 
-The bot runs automatically each day and no longer relies on slash commands or an LLM.
+Optional variables:
+- `BIRTHDAY_CSV` – path to a CSV file with `user_id` and `birth_date`
+- `GOOGLE_SHEET_ID` – Google Sheet ID for birthdays (requires `GOOGLE_SERVICE_ACCOUNT_JSON`)
 
-## Structure
-
-A cron job runs every day at **9am Thailand time** to:
-
-1. Send a reminder to the management and HR channels five working days before a birthday.
-2. Post the birthday message on the celebrant's working day (handling weekends and public holidays).
-
-All birthdays are loaded from a Google Sheet or CSV on startup. No manual slash commands are required.
-### External Birthday Sources
-
-If you have a CSV file or Google Sheet with birthdays, set one of the following environment variables and the bot will import the data at startup:
-
-- `BIRTHDAY_CSV` – path to a CSV file with `user_id` and `birth_date` columns.
-- `GOOGLE_SHEET_ID` – the ID of a Google Sheet containing user ID, birthday and status. Provide service account credentials in `GOOGLE_SERVICE_ACCOUNT_JSON`.
-
-The sheet should contain three columns: user ID, birthday (DD-MM), and status.
-Only rows marked as `active` are imported when the bot starts.
-
-### Office Holidays
-
-To keep the list of public holidays up to date, run:
-
-```
-npm run generate-holidays
+Start the bot with:
+```bash
+node index.js
 ```
 
-This script reads events tagged `[Office Holiday]` from the calendars listed in
-`HOLIDAY_CALENDAR_IDS` and writes the dates to `public-holidays.json` which the
-bot loads on startup.
+## How It Works
+- A cron job runs daily at **9 AM Thailand time** to:
+  1. Collect birthday messages from colleagues seven days in advance.
+  2. Remind management and HR five working days before a birthday.
+  3. Post the birthday thread on the celebrant's working day (skipping weekends and public holidays).
+- Birthdays are imported from a CSV or Google Sheet on startup.
+- Holiday dates are stored in `public-holidays.json` and can be refreshed with `npm run generate-holidays`.
+
+## Further Documentation
+Additional guides are available in the [`docs`](./docs) folder:
+- **EXPLAINER.md** – setup, running and repair instructions
+- **code-overview.md** – module descriptions and key libraries
+- **user-guide.md** – how to interact with the bot
